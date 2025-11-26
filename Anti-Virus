@@ -1,0 +1,71 @@
+import os           #ספריה שמביאה את השמות של הקבצים שיש בתיקייה
+import requests     #http ספריה בשביל בקשות 
+import time
+
+virus_totai_api_key = "8a152dc06ec2eaa49af9091d9fbcf4e23ad8bcb1c6f5e8445511e23fc47389d6"
+virus_totai_api_scan_url = "https://www.virustotal.com/api/v3/files"  
+virus_totai_api_report_url = "poihwlqihiodhqw398i3io8o3y8hif"  
+
+
+def iterate_files(folder_path):
+
+    for filename in os.listdir(folder_path):  #os.listdir(folder_path) מחזיר רשימה של שמות של כל הפריטים (קבצים ותיקיות) בתיקייה שנשלחה.
+
+        #צריך לדעת מסלול מלא כדי לדעת אם בתוך התקייה יש עוד תיקייה 
+        #(C:\...\תיקייה\קובץ) בונים נתיב מלא על ידי חיבור התיקייה + שם הקובץ בצורה שעובדת על כל מערכת הפעלה.  
+        #מחבר את השם של הקבצים שיש בתוך התיקייה לתיקייה כדי שיהיה אפשר לגשת אליהם. 
+        full_path = os.path.join(folder_path, filename)
+
+        if os.path.isdir(full_path):            #אם זה תיקייה
+            print("this is dir", full_path)    #מדפיס שזה תיקייה נותן את השם שלה והקישור
+            iterate_files(full_path)         #וסורק את הקבצים הנוספים שיש בתוך התיקייה
+        
+        else:                                   #אם זה קובץ
+            print("this is file", full_path)   #מדפיס שזה קובץ נותן את השם שלה והקישור
+            scan_file(full_path)               #נותן לאנטי ווירוס לבדוק את הקובץ הזה שפישטנו
+
+
+def send_scan_request(file_path):
+ params = {'apikey': virus_totai_api_key}   #פרמטר של המפתח שלי
+
+ file_content = open(file_path, 'rb')       #בשביל שיקרא בבינארי את הקובץ rb כותב
+ filename = os.path.basename(file_path)     #שנתתי לו file path מחלץ את השים מה 
+ files = {'file': (filename, file_content)}
+
+ #params וגם את הפרמטר שהוא המפתח ב files וגם את התוכן של הקובץ ב api מספק קישור של ה 
+ response = requests.post(virus_totai_api_scan_url, files = files, params = params)
+
+
+def scan_file(file_path):
+    print(f"scanning: {file_path}")
+    response = send_scan_request(file_path)
+    is_virus = get_report(scan_id = response['scan_id']) #'scan_id' מקבל את הקישור שאיתו סורקים את הקובץ במקום של 
+    if is_virus:
+        print(f"VIRUS DETECTED IN THE FILE!! Filepath: {file_path}")
+    else:
+        print(f"there was no virus detected in {file_path}")
+
+
+def get_report(scan_id):
+
+    params = {'apikey': virus_totai_api_key, 'resource': scan_id}  #הפרמטרים לסריקה
+    response = requests.get(virus_totai_api_report_url, params = params)
+    if not response:
+        raise Exception("Unexpected Error in response")
+    
+    if response.status_code == 200:    #אם הסטטוס של הבדיקה של הקבצים הוא תקין
+        result = response.json()       #מעבירים את התוכן של התשובה מבינארי לרגיל
+    
+         #אם קיבלתי תשובה שהקובץ עדיין בסריקה חכה חמש שניות ונסה שוב פעם
+        if result["verbose_msg"] == "Your resource is queued for analysis":
+            print("waiting for file to be analyzed... ")
+            time.sleep(5)                          #אומר שמחכה לבדיקה ולכן נחכה 5 שניות ואז נבדוק אם הסטטוס השתנה
+            get_report(scan_id)
+            return False
+        else:
+            return(result['positives'] > 0)
+    else:
+        print(f"Received unexpected response with status code: {response.status_code}")
+        return False
+
+iterate_files(folder_path = r"C:\Users\liran\Documents")
